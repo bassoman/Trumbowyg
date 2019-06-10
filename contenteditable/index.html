@@ -37,7 +37,10 @@
     <div>
       <p>Lorem <del>ipsum <strong>d<em>o</em>lor</strong></del> <em>sit</em> amet.</p>
       <p>And <strong>blah <em>or</em></strong> nah.</p>
-      <img src="img.svg" alt="Some JavaScript logo" width="20px">
+      <div>
+        Salut
+        <img src="img.svg" alt="Some JavaScript logo" width="20px">
+      </div>
       <ul>
         <li>Item 1</li>
         <li>Second item</li>
@@ -65,10 +68,10 @@
     contenteditable.addEventListener('input', showContentEditableHtml)
     showContentEditableHtml()
 
-    const SELECTABLE_TAGS = ['IMG']
+    const SELECTABLE_TAGS = ['img', 'embed', 'input', 'hr']
 
     function isOrphanSelectableNode(el) {
-      return SELECTABLE_TAGS.indexOf(el.tagName.toUpperCase()) !== -1
+      return SELECTABLE_TAGS.indexOf(el.tagName.toLowerCase()) !== -1
     }
 
     function getTextNodes(el) {
@@ -76,6 +79,7 @@
         return [el]
       }
 
+      // Replace orphan nodes by text-like node with a space to keep 1 index reserved for that element
       if (isOrphanSelectableNode(el)) {
         return [{textContent: ' '}]
       }
@@ -94,39 +98,59 @@
       return textNode.textContent.replace(/(^ {2,})|( {2,}$)/g, '')
     }
 
-    function getNodeOffset(rootEl, el, offset) {
+    function getNodeOffset(rootEl, el, offset, isElIncluded) {
       if (el === rootEl) {
         return offset
       }
 
+      const addedIndexIfIncluded = isElIncluded ? 1 : 0
+
       const childNodes = Array.from(el.parentNode.childNodes)
-      const previousNodes = childNodes.slice(0, childNodes.indexOf(el))
+      const previousNodes = childNodes.slice(0, childNodes.indexOf(el) + addedIndexIfIncluded)
       const previousNodesText = previousNodes.reduce((acc, node) => acc.concat(getTextNodes(node)), []).map(cleanTextNode)
 
       offset = offset + previousNodesText.reduce((acc, nodeText) => acc + nodeText.length, 0)
 
-      return getNodeOffset(rootEl, el.parentNode, offset)
+      return getNodeOffset(rootEl, el.parentNode, offset, false)
+    }
+
+    function cleanRangeBoundary(rangeContainer, rangeOffset) {
+      let isRangeContainerIncluded = false
+
+      if (rangeContainer.nodeType !== Node.TEXT_NODE) {
+        if (rangeContainer.childNodes.length !== rangeOffset) {
+          rangeContainer = rangeContainer.childNodes[rangeOffset]
+        } else {
+          isRangeContainerIncluded = true
+        }
+
+        rangeOffset = 0
+      }
+
+      return {
+        rangeContainer,
+        rangeOffset,
+        isRangeContainerIncluded,
+      }
     }
 
     function convertRangeToAbsoluteIndexes(rootEl, range) {
-      let startContainer = range.startContainer
-      let startOffset = range.startOffset
-      if (startContainer.nodeType !== Node.TEXT_NODE && startContainer === range.commonAncestorContainer) {
-        startContainer = startContainer.childNodes[startOffset]
-        startOffset = 0
-      }
+      const {
+        rangeContainer: startContainer,
+        rangeOffset: startOffset,
+        isRangeContainerIncluded: isStartContainerIncluded,
+      } = cleanRangeBoundary(range.startContainer, range.startOffset)
 
-      let endContainer = range.endContainer
-      let endOffset = range.endOffset
-      if (endContainer.nodeType !== Node.TEXT_NODE && endContainer === range.commonAncestorContainer) {
-        endContainer = endContainer.childNodes[endOffset]
-        endOffset = 0
-      }
+      const {
+        rangeContainer: endContainer,
+        rangeOffset: endOffset,
+        isRangeContainerIncluded: isEndContainerIncluded,
+      } = cleanRangeBoundary(range.endContainer, range.endOffset)
 
-      const start = getNodeOffset(rootEl, startContainer, startOffset)
-      const end = getNodeOffset(rootEl, endContainer, endOffset)
+      const startIndex = getNodeOffset(rootEl, startContainer, startOffset, isStartContainerIncluded)
+      const endIndex = getNodeOffset(rootEl, endContainer, endOffset, isEndContainerIncluded)
 
-      return [start, end]
+      return [startIndex, endIndex]
     }
 
 
